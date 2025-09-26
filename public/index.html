@@ -1,75 +1,73 @@
 <!doctype html>
 <html lang="ar">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>إشارات السوق — Saudi Signals</title>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-  <style>
-    body { font-family: Arial, sans-serif; padding: 18px; direction: rtl; }
-    .badge { padding: 4px 8px; border-radius: 6px; color: #fff; display:inline-block; }
-    .buy { background:#28a745 } .sell { background:#dc3545 } .wait { background:#6c757d }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>إشارات السوق — Saudi Signals</title>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<style>
+body { font-family: Arial, sans-serif; padding: 18px; direction: rtl; }
+.badge { padding: 4px 8px; border-radius: 6px; color: #fff; display:inline-block; }
+.buy { background:#28a745 } .sell { background:#dc3545 } .wait { background:#6c757d }
+</style>
 </head>
 <body>
-  <h2>إشارات الدخول/الخروج — السوق السعودي</h2>
-  <p>آخر تحديث: <span id="last">-</span></p>
-  <table id="signals" class="display" style="width:100%">
-    <thead>
-      <tr>
-        <th>الرمز</th>
-        <th>اسم الشركة</th>
-        <th>السعر</th>
-        <th>التغير %</th>
-        <th>صافي السيولة</th>
-        <th>EMA9</th>
-        <th>EMA20</th>
-        <th>الإشارة</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+<h2>إشارات الدخول/الخروج — السوق السعودي</h2>
+<p>آخر تحديث: <span id="last">-</span></p>
+<table id="signals" class="display" style="width:100%">
+<thead>
+<tr>
+<th>الرمز</th>
+<th>اسم الشركة</th>
+<th>السعر</th>
+<th>التغير %</th>
+<th>صافي السيولة</th>
+<th>EMA9</th>
+<th>EMA20</th>
+<th>الإشارة</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
 
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-  <script>
-    const table = $('#signals').DataTable({
-      columns: [
-        { data: 'Symbol' },
-        { data: 'Name' },
-        { data: 'Price', render: v => (v ? (+v).toFixed(2) : '-') },
-        { data: 'ChangePercent', render: v => (v ? (+v).toFixed(2) + '%' : '-') },
-        { data: 'NetVol', render: v => (v ? (+v).toLocaleString() : '-') },
-        { data: 'EMA9' },
-        { data: 'EMA20' },
-        { data: 'Action', render: v => {
-            if (v === 'شراء') return '<span class="badge buy">شراء</span>';
-            if (v === 'بيع') return '<span class="badge sell">بيع</span>';
-            return '<span class="badge wait">انتظار</span>';
-          }
-        }
-      ],
-      pageLength: 25,
-      order: [[2, 'desc']],
-      language: {
-        url: "https://cdn.datatables.net/plug-ins/1.13.6/i18n/ar.json"
-      }
-    });
 
-    async function reload() {
-      try {
-        const res = await fetch('/api/summary');
-        const json = await res.json();
-        table.clear();
-        if (json.data && json.data.length) table.rows.add(json.data);
-        table.draw();
-        document.getElementById('last').innerText = new Date().toLocaleString();
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    reload();
-    setInterval(reload, 30000);
-  </script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script>
+const table = $('#signals').DataTable({
+columns: [
+{ data: 'Symbol' },
+{ data: 'Name' },
+{ data: 'Price', render: v => (v ? (+v).toFixed(2) : '-') },
+{ data: 'ChangePercent', render: v => (v ? (+v).toFixed(2) + '%' : '-') },
+{ data: 'NetVol', render: v => (v ? (+v).toLocaleString() : '-') },
+{ data: 'EMA9' },
+{ data: 'EMA20' },
+{ data: 'Action', render: v => {
+if (v === 'شراء') return '<span class="badge buy">شراء</span>';
+if (v === 'بيع') return '<span class="badge sell">بيع</span>';
+return '<span class="badge wait">انتظار</span>';
+}
+}
+],
+pageLength: 25,
+order: [[2, 'desc']],
+language: { url: "https://cdn.datatables.net/plug-ins/1.13.6/i18n/ar.json" }
+});
+
+
+async function reload() {
+try {
+const res = await fetch('/api/summary');
+const json = await res.json();
+table.clear();
+if (json.data && json.data.length) table.rows.add(json.data);
+table.draw();
+document.getElementById('last').innerText = new Date().toLocaleString();
+} catch (e) { console.error(e); }
+}
+reload();
+setInterval(reload, 30000);
+</script>
 </body>
 </html>
