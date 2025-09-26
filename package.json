@@ -4,6 +4,9 @@
   "description": "Playwright scraper + EMA signals for Saudi Exchange",
   "main": "saudi_stock_bot.js",
   "scripts": {
+  "start": "node server.js"
+}
+
     "start": "node saudi_stock_bot.js"
   },
   "dependencies": {
