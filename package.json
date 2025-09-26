@@ -1,16 +1,17 @@
 {
   "name": "saudi_stock_bot",
   "version": "1.0.0",
-  "description": "Playwright scraper + EMA signals for Saudi Exchange",
-  "main": "saudi_stock_bot.js",
+  "description": "Playwright scraper + EMA signals + web UI",
+  "main": "server.js",
   "scripts": {
-  "start": "node server.js"
-}
-
-    "start": "node saudi_stock_bot.js"
+    "start": "node server.js",
+    "scrape": "node saudi_stock_bot.js"
   },
   "dependencies": {
     "csv-writer": "^1.6.0",
+    "csv-parse": "^5.4.0",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.2",
     "playwright": "^1.40.0"
   },
   "engines": {
