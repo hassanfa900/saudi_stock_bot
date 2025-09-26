@@ -29,6 +29,8 @@ app.get('/api/summary', (req, res) => {
       EMA20: r.EMA20 || '',
       Action: r.Action || ''
     }));
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+
     res.json({ data });
   } catch (err) {
     console.error(err);
