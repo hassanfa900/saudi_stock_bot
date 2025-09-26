@@ -1,31 +1,35 @@
 // saudi_stock_bot.js
-// Requires: node, playwright, csv-writer
+// Requires: node >=18, playwright, csv-writer, dotenv
+// Purpose: Robust Playwright scraper for Saudi Exchange → writes atomic summary.csv + per-symbol history
+
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
-/** ========== إعدادات قابلة للتعديل ========== */
-const siteUrl = 'https://www.saudiexchange.sa/'; // عدّل لصفحة السوق/المراقبة الصحيحة
-const rowSelector = 'table tbody tr'; // غيّره إذا بنية الجدول مختلفة
-const cellIndexes = {
-  symbol: 0,
-  name: 1,
-  price: 2,
-  changePercent: 3,
-  volumeIn: 4,
-  volumeOut: 5
-};
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+const SITE_URL = process.env.SITE_URL || 'https://www.saudiexchange.sa/';
+const ROW_SELECTOR = process.env.ROW_SELECTOR || 'table tbody tr';
+const DATA_DIR = path.join(__dirname, 'data');
+const SUMMARY_TMP = path.join(__dirname, 'summary.tmp.csv');
+const SUMMARY_FILE = path.join(__dirname, 'summary.csv');
+const LOG_FILE = path.join(__dirname, 'scraper.log');
 
-/** ========== مساعدة ========== */
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+function log(...args) {
+  const line = `[${new Date().toISOString()}] ${args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`;
+  fs.appendFileSync(LOG_FILE, line);
+  console.log(...args);
+}
+
 function parseNumber(txt) {
   if (!txt) return 0;
   txt = String(txt).replace(/[,٪% ]+/g, '').replace(/--/g, '0');
   const n = parseFloat(txt);
   return isNaN(n) ? 0 : n;
 }
+
 function calculateEMA(values, window) {
   if (!values || values.length === 0) return null;
   const k = 2 / (window + 1);
@@ -35,8 +39,9 @@ function calculateEMA(values, window) {
   }
   return ema;
 }
+
 function readHistoryPrices(symbol) {
-  const file = path.join(dataDir, `${symbol}.csv`);
+  const file = path.join(DATA_DIR, `${symbol}.csv`);
   if (!fs.existsSync(file)) return [];
   const lines = fs.readFileSync(file, 'utf8').trim().split('\n');
   const values = [];
@@ -47,119 +52,63 @@ function readHistoryPrices(symbol) {
   }
   return values;
 }
+
 function appendHistory(symbol, price, volIn, volOut) {
-  const file = path.join(dataDir, `${symbol}.csv`);
+  const file = path.join(DATA_DIR, `${symbol}.csv`);
   const timestamp = new Date().toISOString();
-  const line = `${timestamp},${price},${volIn},${volOut}\n`;
+  const safeLine = `${timestamp},${price},${volIn},${volOut}\n`;
   if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, 'timestamp,price,volume_in,volume_out\n' + line);
+    fs.writeFileSync(file, 'timestamp,price,volume_in,volume_out\n' + safeLine);
   } else {
-    fs.appendFileSync(file, line);
+    fs.appendFileSync(file, safeLine);
   }
 }
 
-/** ========== الرئيسية ========== */
+async function safeGoto(page, url) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      return;
+    } catch (e) {
+      log('goto attempt', i + 1, 'failed, retrying...', e.message || e);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  throw new Error('Failed to goto ' + url);
+}
+
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  log('Scraper started');
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage();
   try {
-    await page.goto(siteUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForSelector(rowSelector, { timeout: 15000 });
+    await safeGoto(page, SITE_URL);
+    await page.waitForSelector(ROW_SELECTOR, { timeout: 15000 });
 
-    const rows = await page.$$(rowSelector);
+    const rows = await page.$$(ROW_SELECTOR);
+    log('rows found', rows.length);
     const results = [];
+
     for (const row of rows) {
-      const cells = await row.$$('td');
-      if (!cells || cells.length < 3) continue;
+      try {
+        const cells = await row.$$('td');
+        if (!cells || cells.length < 3) continue;
 
-      const getText = async (idx) => {
-        if (cells[idx]) {
-          const t = await cells[idx].innerText();
-          return t ? t.trim() : '';
+        // read texts safely
+        async function getText(i) {
+          try {
+            const el = cells[i];
+            if (!el) return '';
+            const t = await el.innerText();
+            return t ? t.trim() : '';
+          } catch {
+            return '';
+          }
         }
-        return '';
-      };
 
-      const symbolText = await getText(cellIndexes.symbol);
-      const nameText = await getText(cellIndexes.name);
-      const priceText = await getText(cellIndexes.price);
-      const changeText = await getText(cellIndexes.changePercent);
-      const vInText = await getText(cellIndexes.volumeIn);
-      const vOutText = await getText(cellIndexes.volumeOut);
-
-      const symbol = symbolText || 'UNKNOWN';
-      const name = nameText || '';
-      const price = parseNumber(priceText);
-      const changePercent = parseNumber(changeText);
-      const volumeIn = parseNumber(vInText);
-      const volumeOut = parseNumber(vOutText);
-      const netVol = volumeIn - volumeOut;
-
-      appendHistory(symbol, price, volumeIn, volumeOut);
-
-      const priceHistory = readHistoryPrices(symbol);
-      if (priceHistory.length === 0 || priceHistory[priceHistory.length - 1] !== price) {
-        priceHistory.push(price);
-      }
-
-      const ema9 = calculateEMA(priceHistory, 9);
-      const ema20 = calculateEMA(priceHistory, 20);
-
-      let signal = 0;
-      if (ema9 && ema20) {
-        if (ema9 > ema20) signal = 1;
-        else if (ema9 < ema20) signal = -1;
-      }
-
-      let finalSignal = signal;
-      if (signal === 1 && netVol <= 0) finalSignal = 0;
-
-      const action = finalSignal === 1 ? 'شراء' : (finalSignal === -1 ? 'بيع' : 'انتظار');
-
-      results.push({
-        Symbol: symbol,
-        Name: name,
-        Price: price,
-        ChangePercent: changePercent,
-        VolumeIn: volumeIn,
-        VolumeOut: volumeOut,
-        NetVolume: netVol,
-        EMA9: ema9 ? ema9.toFixed(4) : '',
-        EMA20: ema20 ? ema20.toFixed(4) : '',
-        Action: action
-      });
-    }
-
-    const outCsv = path.join(__dirname, 'summary.csv');
-    const csvWriter = createCsvWriter({
-      path: outCsv,
-      header: [
-        {id: 'Symbol', title: 'Symbol'},
-        {id: 'Name', title: 'Name'},
-        {id: 'Price', title: 'Price'},
-        {id: 'ChangePercent', title: 'Change%'},
-        {id: 'VolumeIn', title: 'VolIn'},
-        {id: 'VolumeOut', title: 'VolOut'},
-        {id: 'NetVolume', title: 'NetVol'},
-        {id: 'EMA9', title: 'EMA9'},
-        {id: 'EMA20', title: 'EMA20'},
-        {id: 'Action', title: 'Action'}
-      ]
-    });
-    await csvWriter.writeRecords(results);
-
-    console.table(results.map(r => ({
-      Symbol: r.Symbol,
-      Name: r.Name,
-      Price: r.Price,
-      'Change%': r.ChangePercent,
-      Action: r.Action
-    })));
-
-    console.log(`Saved summary to ${outCsv} — detailed history in ${dataDir}/<SYMBOL>.csv`);
-  } catch (err) {
-    console.error('Error scraping:', err);
-  } finally {
-    await browser.close();
-  }
-})();
+        const symbolT = await getText(0);
+        const nameT = await getText(1);
+        const priceT = await getText(2);
+        const changeT = await getText(3);
+        // try to find volume columns by index or fallback to some next columns
+        const vInT = (aw
